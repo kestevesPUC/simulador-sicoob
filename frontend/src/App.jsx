@@ -1,241 +1,192 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CIcon from '@coreui/icons-react';
 import {
-  cilBank, cilBuilding, cilCalculator, cilChart, cilChartLine,
-  cilCloudDownload, cilDollar, cilGraph, cilMoney, cilReload,
-  cilSettings, cilWallet, cilArrowThickFromBottom
+  cilBank, cilBuilding, cilChart, cilCloudDownload,
+  cilGraph, cilMoney, cilReload, cilSettings, cilUser
 } from '@coreui/icons';
 import {
   CBadge, CButton, CCard, CCardBody, CCol, CContainer,
   CFormInput, CFormLabel, CHeader, CHeaderBrand, CInputGroup,
-  CInputGroupText, CRow, CTable, CTableBody, CTableDataCell,
-  CTableHead, CTableHeaderCell, CTableRow, CNav, CNavItem, CNavLink
+  CInputGroupText, CRow, CNav, CNavItem, CNavLink
 } from '@coreui/react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
-  AreaChart, Area, LineChart, Line
+  ResponsiveContainer, Cell, Legend, PieChart, Pie
 } from 'recharts';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const DEFAULT_REVENUE_BASE = 23000000;
-const DEFAULT_PAYMENTS_BASE = 24000000;
-const DEFAULT_RESULT_2026 = 15500000;
-
-const STATIC = {
-  indCondominiums: 46,
-  indUnits: 1768,
-  poolCondominiums: 217,
-  poolUnits: 6445,
-  costBoletagem: 1,
-  tariffInd: 14,
-  priceBoletagem: 1.7,
-  depositRate: 0.0913,
-  investmentRate: 0.096,
-  depositRateio: 0.4,
-  investmentRateio: 0.25,
-  collectionRateio: 0.2,
-  tariffPrice: 50,
-  paymentTickets: 3750,
-  paymentSpread: 0.2,
-  contaDeposito: 102559246.79,
-  contaInvestimento: 359016883.85,
-  contaCobranca: 4339523.32,
-  dist2024: 2751739.53,
-  result2024: 11370764,
-  dist2025: 1326211.7,
-  result2025: 22876889,
+// ── Constantes fixas do sistema (da planilha Resultados) ──────────────────────
+const HIST = {
+  dist2024: 2751739.53, res2024: 11370764,
+  dist2025: 1326211.70, res2025: 22876889,
 };
+const CONTA = { dv: 102559246.79, inv: 359016883.85, cob: 4339523.32 };
+const PRECO_BOLETAGEM = 1.7;
+const PRECO_TARIFA    = 50;
+const BOLETOS_FIXO    = 3750;
 
-const COLORS = {
-  individual: '#007f5f',
-  pool: '#2eb85c',
-  secondary: '#6c757d',
-  accent: '#f9a825',
-  bg: '#f3f6f8',
-  primary: '#007f5f',
-};
+// ── Modelo de cálculo (idêntico às fórmulas da planilha) ─────────────────────
+function calcular(ind, pool, params) {
+  const { resultado2026alvo } = params;
 
-const PIE_COLORS = ['#2eb85c', '#007f5f', '#00b8a9', '#f9a825', '#e74c3c', '#9b59b6'];
+  const fatInd  = ind.faturamento;
+  const fatPool = pool.faturamento;
 
-// ── Formatters ────────────────────────────────────────────────────────────────
-const fmt = (value, compact = false) =>
-  new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    ...(compact ? { notation: 'compact', maximumFractionDigits: 1 } : { maximumFractionDigits: 2 }),
-  }).format(Number.isFinite(value) ? value : 0);
+  // Resultado 2026 estimado (formula Resultados B4)
+  const distHist = HIST.dist2024 + HIST.dist2025;
+  const resHist  = HIST.res2024  + HIST.res2025;
+  const resultado2026 = resHist > 0 ? distHist / resHist * resultado2026alvo : 0;
 
-const fmtPct = (value) =>
-  new Intl.NumberFormat('pt-BR', {
-    style: 'percent',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(Number.isFinite(value) ? value : 0);
+  // Shares do pool (formulas Resultados M2, M3, M4)
+  const saldoDV  = fatPool * 0.0913;
+  const saldoInv = fatPool * 0.096;
+  const boletosPool = pool.custoBoletagem * pool.unidades;
 
-const fmtNum = (value) => new Intl.NumberFormat('pt-BR').format(value);
+  const shareDV  = (CONTA.dv  + saldoDV)    > 0 ? saldoDV    / (CONTA.dv  + saldoDV)    : 0;
+  const shareInv = (CONTA.inv + saldoInv)   > 0 ? saldoInv   / (CONTA.inv + saldoInv)   : 0;
+  const shareCob = (CONTA.cob + boletosPool) > 0 ? boletosPool / (CONTA.cob + boletosPool) : 0;
 
-const tooltipFmt = (value) => fmt(value);
-
-// ── Model ─────────────────────────────────────────────────────────────────────
-function calculateModel(revenueBase, paymentsBase, result2026) {
-  const base = Number(revenueBase) || 0;
-  const pmtBase = Number(paymentsBase) || 0;
-  const res2026 = Number(result2026) || 0;
-  const totalUnits = STATIC.indUnits + STATIC.poolUnits;
-
-  const faturamentoInd = (base / 3 / totalUnits) * STATIC.indUnits;
-  const faturamentoPool = (base / 3 / totalUnits) * STATIC.poolUnits;
-  const pagamentosInd = (pmtBase / 3 / totalUnits) * STATIC.indUnits;
-  const pagamentosPool = (pmtBase / 3 / totalUnits) * STATIC.poolUnits;
-
-  const dist2026 =
-    ((STATIC.dist2024 + STATIC.dist2025) / (STATIC.result2024 + STATIC.result2025)) * res2026;
-
-  const predialDep = faturamentoPool * STATIC.depositRate;
-  const predialInv = faturamentoPool * STATIC.investmentRate;
-  const predialCob = STATIC.costBoletagem * STATIC.poolUnits;
-
-  const pctDep = predialDep / (STATIC.contaDeposito + predialDep);
-  const pctInv = predialInv / (STATIC.contaInvestimento + predialInv);
-  const pctCob = predialCob / (STATIC.contaCobranca + predialCob);
-
-  const rows = [
-    {
-      group: 'Boletagem',
-      metric: 'Preço atribuído',
-      rate: `R$ ${STATIC.priceBoletagem.toFixed(2)}/un`,
-      indMonthly: (STATIC.priceBoletagem - STATIC.costBoletagem) * STATIC.indUnits,
-      poolMonthly: (STATIC.priceBoletagem - STATIC.costBoletagem) * STATIC.poolUnits,
-    },
-    {
-      group: 'Boletagem',
-      metric: 'Emissão (Distribuição de resultado)',
-      rate: `${(pctCob * 100).toFixed(4)}% da cobrança`,
-      indMonthly: 0,
-      poolMonthly: dist2026 * STATIC.collectionRateio * pctCob,
-    },
-    {
-      group: 'Depósito à vista',
-      metric: 'Saldo médio (Distribuição de resultado)',
-      rate: `${(STATIC.depositRate * 100).toFixed(2)}% do faturamento`,
-      indMonthly: 0,
-      poolMonthly: dist2026 * STATIC.depositRateio * pctDep,
-    },
-    {
-      group: 'Investimento',
-      metric: 'Saldo médio (Distribuição de resultado)',
-      rate: `${(STATIC.investmentRate * 100).toFixed(2)}% x faturamento`,
-      indMonthly: 0,
-      poolMonthly: dist2026 * STATIC.investmentRateio * pctInv,
-    },
-    {
-      group: 'Pagamentos',
-      metric: 'Boletos',
-      rate: `${STATIC.paymentTickets} boletos × ${(STATIC.paymentSpread * 100).toFixed(0)}%`,
-      indMonthly: 0,
-      poolMonthly: STATIC.paymentTickets * STATIC.paymentSpread,
-    },
-    {
-      group: 'Tarifa',
-      metric: 'Preço',
-      rate: `R$ ${STATIC.tariffPrice}/cond. (ind)`,
-      indMonthly: (STATIC.tariffPrice - STATIC.tariffInd) * STATIC.indCondominiums,
-      poolMonthly: 0,
-    },
-  ];
-
-  const enriched = rows.map((r) => ({
-    ...r,
-    indQuarterly: r.indMonthly * 3,
-    poolQuarterly: r.poolMonthly * 3,
-    indAnnual: r.indMonthly * 12,
-    poolAnnual: r.poolMonthly * 12,
-    monthlyTotal: r.indMonthly + r.poolMonthly,
-    quarterlyTotal: (r.indMonthly + r.poolMonthly) * 3,
-    annualTotal: (r.indMonthly + r.poolMonthly) * 12,
-  }));
-
-  const sum = (fn) => enriched.reduce((t, r) => t + fn(r), 0);
-  const totals = {
-    indMonthly: sum((r) => r.indMonthly),
-    poolMonthly: sum((r) => r.poolMonthly),
-    indQuarterly: sum((r) => r.indQuarterly),
-    poolQuarterly: sum((r) => r.poolQuarterly),
-    indAnnual: sum((r) => r.indAnnual),
-    poolAnnual: sum((r) => r.poolAnnual),
-    monthlyTotal: sum((r) => r.monthlyTotal),
-    quarterlyTotal: sum((r) => r.quarterlyTotal),
-    annualTotal: sum((r) => r.annualTotal),
+  // Valores MENSAIS (fórmulas da aba Resultado)
+  const m = {
+    bolagemPrecoInd:  (PRECO_BOLETAGEM - ind.custoBoletagem)  * ind.unidades,
+    bolagemPrecoPool: (PRECO_BOLETAGEM - pool.custoBoletagem) * pool.unidades,
+    bolagemEmissaoInd:  0,
+    bolagemEmissaoPool: resultado2026 * 0.2 * shareCob,
+    dvInd:  0,
+    dvPool: resultado2026 * 0.4 * shareDV,
+    invInd:  0,
+    invPool: resultado2026 * 0.25 * shareInv,
+    boletosInd:  0,
+    boletosPool: BOLETOS_FIXO * 0.2,
+    tarifaInd:  (PRECO_TARIFA - ind.tarifa)  * ind.condominios,
+    tarifaPool: (0            - pool.tarifa) * pool.condominios,
   };
+  m.totalInd  = m.bolagemPrecoInd  + m.tarifaInd;
+  m.totalPool = m.bolagemPrecoPool + m.bolagemEmissaoPool + m.dvPool + m.invPool + m.boletosPool + m.tarifaPool;
+  m.total     = m.totalInd + m.totalPool;
 
-  const resultados = [
-    {
-      conta: 'Depósito à vista',
-      rateio: STATIC.depositRateio,
-      valor: STATIC.contaDeposito,
-      predial: predialDep,
-      pct: pctDep,
-    },
-    {
-      conta: 'Investimento',
-      rateio: STATIC.investmentRateio,
-      valor: STATIC.contaInvestimento,
-      predial: predialInv,
-      pct: pctInv,
-    },
-    {
-      conta: 'Cobrança',
-      rateio: STATIC.collectionRateio,
-      valor: STATIC.contaCobranca,
-      predial: predialCob,
-      pct: pctCob,
-    },
-  ];
+  const q = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v * 3]));
+  const a = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v * 12]));
 
-  return {
-    faturamentoInd, faturamentoPool,
-    pagamentosInd, pagamentosPool,
-    dist2026, res2026,
-    predialDep, predialInv, predialCob,
-    rows: enriched,
-    totals,
-    resultados,
-    totalPredialAnual: predialDep + predialInv + predialCob,
-  };
+  return { fatInd, fatPool, resultado2026, m, q, a, shareDV, shareInv, shareCob };
 }
 
-// ── Subcomponents ─────────────────────────────────────────────────────────────
-function KpiCard({ icon, label, value, sub, color = 'primary' }) {
+// ── Formatadores ───────────────────────────────────────────────────────────────
+const fmt   = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }).format(v ?? 0);
+const fmtC  = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 }).format(v ?? 0);
+const fmtN  = (v) => new Intl.NumberFormat('pt-BR').format(v ?? 0);
+
+// ── Hook de persistência ──────────────────────────────────────────────────────
+const STATUS_LABEL = { loading: 'Carregando...', saving: 'Salvando...', ready: 'Salvo', error: 'Erro' };
+const STATUS_COLOR = { loading: 'secondary', saving: 'warning', ready: 'success', error: 'danger' };
+
+function useParams() {
+  const [resultado2026alvo, setResultado] = useState(15500000);
+  const [faturamentoBase, setFaturamento] = useState(23000000);
+  const [status, setStatus] = useState('loading');
+  const timer = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/params')
+      .then((r) => r.json())
+      .then((d) => {
+        setResultado(Number(d.resultado_2026) || 15500000);
+        setFaturamento(Number(d.faturamento_base) || 23000000);
+        setStatus('ready');
+      })
+      .catch(() => setStatus('error'));
+  }, []);
+
+  const persist = useCallback((res, fat) => {
+    clearTimeout(timer.current);
+    setStatus('saving');
+    timer.current = setTimeout(() => {
+      fetch('/api/params', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resultado_2026: res, faturamento_base: fat }),
+      }).then(() => setStatus('ready')).catch(() => setStatus('error'));
+    }, 800);
+  }, []);
+
+  const setRes = useCallback((v) => { setResultado(v); persist(v, faturamentoBase); }, [faturamentoBase, persist]);
+  const setFat = useCallback((v) => { setFaturamento(v); persist(resultado2026alvo, v); }, [resultado2026alvo, persist]);
+  const reset  = useCallback(() => { setResultado(15500000); setFaturamento(23000000); persist(15500000, 23000000); }, [persist]);
+
+  return { resultado2026alvo, faturamentoBase, status, setRes, setFat, reset };
+}
+
+// ── Subcomponentes ─────────────────────────────────────────────────────────────
+function InputCard({ title, color, value, onChange }) {
+  const set = (field, v) => onChange({ ...value, [field]: Number(v) || 0 });
   return (
-    <CCol sm={6} xl={3}>
-      <CCard className="h-100 kpi-card border-0 shadow-sm">
-        <CCardBody className="d-flex align-items-center gap-3 p-3">
-          <div className={`kpi-icon text-${color}`} style={{ background: color === 'success' ? '#e8f6f1' : color === 'primary' ? '#e0f0ea' : color === 'info' ? '#e0f5ff' : '#fff8e1' }}>
-            <CIcon icon={icon} size="xl" />
-          </div>
-          <div className="min-w-0 flex-grow-1">
-            <div className="text-medium-emphasis small fw-semibold">{label}</div>
-            <div className="kpi-value fw-bold fs-5 text-dark">{value}</div>
-            {sub && <div className="text-medium-emphasis" style={{ fontSize: '0.75rem' }}>{sub}</div>}
-          </div>
-        </CCardBody>
-      </CCard>
-    </CCol>
+    <CCard className="border-0 shadow-sm h-100">
+      <CCardBody className="p-4">
+        <div className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ color }}>
+          <CIcon icon={cilUser} />{title}
+        </div>
+        <CFormLabel className="small fw-semibold mb-1">Faturamento Médio Mensal</CFormLabel>
+        <CInputGroup className="mb-3">
+          <CInputGroupText>R$</CInputGroupText>
+          <CFormInput type="number" min="0" step="10000" placeholder="Ex: 1650391"
+            value={value.faturamento || ''} onChange={(e) => set('faturamento', e.target.value)} />
+        </CInputGroup>
+        <CFormLabel className="small fw-semibold mb-1">Condomínios</CFormLabel>
+        <CInputGroup className="mb-3">
+          <CInputGroupText>Cond.</CInputGroupText>
+          <CFormInput type="number" min="0" step="1" placeholder="Ex: 46"
+            value={value.condominios || ''} onChange={(e) => set('condominios', e.target.value)} />
+        </CInputGroup>
+        <CFormLabel className="small fw-semibold mb-1">Unidades</CFormLabel>
+        <CInputGroup className="mb-3">
+          <CInputGroupText>Un.</CInputGroupText>
+          <CFormInput type="number" min="0" step="1" placeholder="Ex: 1768"
+            value={value.unidades || ''} onChange={(e) => set('unidades', e.target.value)} />
+        </CInputGroup>
+        <CFormLabel className="small fw-semibold mb-1">Custo boletagem</CFormLabel>
+        <CInputGroup className="mb-3">
+          <CInputGroupText>R$</CInputGroupText>
+          <CFormInput type="number" min="0" step="0.10" placeholder="Ex: 1.00"
+            value={value.custoBoletagem || ''} onChange={(e) => set('custoBoletagem', e.target.value)} />
+        </CInputGroup>
+        <CFormLabel className="small fw-semibold mb-1">Tarifa atual (R$/cond/mês)</CFormLabel>
+        <CInputGroup>
+          <CInputGroupText>R$</CInputGroupText>
+          <CFormInput type="number" min="0" step="1" placeholder="Ex: 14"
+            value={value.tarifa || ''} onChange={(e) => set('tarifa', e.target.value)} />
+        </CInputGroup>
+      </CCardBody>
+    </CCard>
   );
 }
 
-function SectionHeader({ icon, title, subtitle }) {
+function InfoPill({ label, value }) {
   return (
-    <div className="d-flex align-items-center gap-2 mb-3">
-      <div className="section-icon">
-        <CIcon icon={icon} size="sm" />
-      </div>
-      <div>
-        <div className="section-title fw-bold">{title}</div>
-        {subtitle && <div className="text-medium-emphasis" style={{ fontSize: '0.8rem' }}>{subtitle}</div>}
-      </div>
+    <div className="info-pill">
+      <span className="info-pill-label">{label}</span>
+      <span className="info-pill-value">{value}</span>
     </div>
+  );
+}
+
+function ResultRow({ label, hint, mInd, mPool, qInd, qPool, aInd, aPool, isTotal, isSubtotal }) {
+  const cls = isTotal ? 'result-total-tr' : isSubtotal ? 'result-sub-tr' : 'result-data-tr';
+  const vfmt = isTotal || isSubtotal ? (v) => <strong>{fmt(v)}</strong> : fmt;
+  return (
+    <tr className={cls}>
+      <td className="result-label-cell">
+        <span className="fw-semibold">{label}</span>
+        {hint && <span className="result-hint d-block">{hint}</span>}
+      </td>
+      <td className="num-cell">{vfmt(mInd)}</td>
+      <td className="num-cell">{vfmt(mPool)}</td>
+      <td className="num-cell period-sep">{vfmt(mInd + mPool)}</td>
+      <td className="num-cell">{vfmt(qInd)}</td>
+      <td className="num-cell">{vfmt(qPool)}</td>
+      <td className="num-cell period-sep">{vfmt(qInd + qPool)}</td>
+      <td className="num-cell">{vfmt(aInd)}</td>
+      <td className="num-cell">{vfmt(aPool)}</td>
+      <td className="num-cell period-sep">{vfmt(aInd + aPool)}</td>
+    </tr>
   );
 }
 
@@ -243,212 +194,118 @@ const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="custom-tooltip">
-      <p className="fw-bold mb-1" style={{ color: '#1b2a33' }}>{label}</p>
+      <p className="fw-bold mb-1">{label}</p>
       {payload.map((p) => (
-        <p key={p.name} className="mb-0" style={{ color: p.color }}>
-          {p.name}: {fmt(p.value)}
-        </p>
+        <p key={p.name} className="mb-0" style={{ color: p.color }}>{p.name}: {fmt(p.value)}</p>
       ))}
     </div>
   );
 };
 
-// ── Main App ──────────────────────────────────────────────────────────────────
-function usePersistedParams() {
-  const [revenueBase, setRevenueBase] = useState(0);
-  const [paymentsBase, setPaymentsBase] = useState(0);
-  const [result2026, setResult2026] = useState(0);
-  const [status, setStatus] = useState('loading'); // loading | ready | saving | error
-  const debounceRef = useRef(null);
-
-  useEffect(() => {
-    fetch('/api/params')
-      .then((r) => r.json())
-      .then((data) => {
-        setRevenueBase(Number(data.revenue_base) || 0);
-        setPaymentsBase(Number(data.payments_base) || 0);
-        setResult2026(Number(data.result_2026) || 0);
-        setStatus('ready');
-      })
-      .catch(() => setStatus('error'));
-  }, []);
-
-  const persist = useCallback((revenue, payments, res2026) => {
-    clearTimeout(debounceRef.current);
-    setStatus('saving');
-    debounceRef.current = setTimeout(() => {
-      fetch('/api/params', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ revenue_base: revenue, payments_base: payments, result_2026: res2026 }),
-      })
-        .then(() => setStatus('ready'))
-        .catch(() => setStatus('error'));
-    }, 800);
-  }, []);
-
-  const set = useCallback((field, value) => {
-    const next = { revenue: revenueBase, payments: paymentsBase, res2026: result2026, [field]: value };
-    if (field === 'revenue') setRevenueBase(value);
-    if (field === 'payments') setPaymentsBase(value);
-    if (field === 'res2026') setResult2026(value);
-    persist(next.revenue, next.payments, next.res2026);
-  }, [revenueBase, paymentsBase, result2026, persist]);
-
-  const reset = useCallback(() => {
-    setRevenueBase(DEFAULT_REVENUE_BASE);
-    setPaymentsBase(DEFAULT_PAYMENTS_BASE);
-    setResult2026(DEFAULT_RESULT_2026);
-    persist(DEFAULT_REVENUE_BASE, DEFAULT_PAYMENTS_BASE, DEFAULT_RESULT_2026);
-  }, [persist]);
-
-  return { revenueBase, paymentsBase, result2026, status, set, reset };
-}
-
-const STATUS_LABEL = { loading: 'Carregando...', saving: 'Salvando...', ready: 'Salvo', error: 'Erro ao salvar' };
-const STATUS_COLOR = { loading: 'secondary', saving: 'warning', ready: 'success', error: 'danger' };
+// ── App principal ─────────────────────────────────────────────────────────────
+const EMPTY_PROFILE = { faturamento: 0, condominios: 0, unidades: 0, custoBoletagem: 1, tarifa: 0 };
 
 export default function App() {
-  const { revenueBase, paymentsBase, result2026, status, set, reset } = usePersistedParams();
-  const [activeTab, setActiveTab] = useState('ganhos');
+  const { resultado2026alvo, faturamentoBase, status, setRes, setFat, reset } = useParams();
+  const [activeTab, setActiveTab] = useState('resultados');
+  const [ind,  setInd]  = useState({ ...EMPTY_PROFILE });
+  const [pool, setPool] = useState({ ...EMPTY_PROFILE });
+  const [nomeAdm, setNomeAdm] = useState('');
 
-  const m = useMemo(
-    () => calculateModel(revenueBase, paymentsBase, result2026),
-    [revenueBase, paymentsBase, result2026]
+  const c = useMemo(
+    () => calcular(ind, pool, { resultado2026alvo }),
+    [ind, pool, resultado2026alvo]
   );
 
-  const barData = m.rows.map((r) => ({
-    name: r.group,
-    Individual: r.indAnnual,
-    Pool: r.poolAnnual,
-  }));
-
-  const pieData = m.rows
-    .filter((r) => r.annualTotal > 0)
-    .map((r) => ({ name: r.group, value: r.annualTotal }));
-
-  const periodData = [
-    { period: 'Mensal', Individual: m.totals.indMonthly, Pool: m.totals.poolMonthly, Total: m.totals.monthlyTotal },
-    { period: 'Trimestral', Individual: m.totals.indQuarterly, Pool: m.totals.poolQuarterly, Total: m.totals.quarterlyTotal },
-    { period: 'Anual', Individual: m.totals.indAnnual, Pool: m.totals.poolAnnual, Total: m.totals.annualTotal },
-  ];
-
   const exportCsv = () => {
-    const headers = ['Grupo', 'Métrica', 'Mensal Ind', 'Mensal Pool', 'Mensal Total', 'Trim. Ind', 'Trim. Pool', 'Trim. Total', 'Anual Ind', 'Anual Pool', 'Anual Total'];
-    const rows = m.rows.map((r) => [r.group, r.metric, r.indMonthly, r.poolMonthly, r.monthlyTotal, r.indQuarterly, r.poolQuarterly, r.quarterlyTotal, r.indAnnual, r.poolAnnual, r.annualTotal]);
-    const csv = [headers, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const n = (v) => (v ?? 0).toFixed(2).replace('.', ',');
+    const s = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = [
+      ['Categoria', 'Item', 'Mensal Ind', 'Mensal Pool', 'Mensal Total', 'Trim Ind', 'Trim Pool', 'Trim Total', 'Anual Ind', 'Anual Pool', 'Anual Total'],
+      ['Boletagem', 'Preço atribuído',       c.m.bolagemPrecoInd,   c.m.bolagemPrecoPool,   c.m.bolagemPrecoInd+c.m.bolagemPrecoPool,     c.q.bolagemPrecoInd,   c.q.bolagemPrecoPool,   c.q.bolagemPrecoInd+c.q.bolagemPrecoPool,     c.a.bolagemPrecoInd,   c.a.bolagemPrecoPool,   c.a.bolagemPrecoInd+c.a.bolagemPrecoPool],
+      ['Boletagem', 'Emissão (Distrib.)',    c.m.bolagemEmissaoInd, c.m.bolagemEmissaoPool, c.m.bolagemEmissaoInd+c.m.bolagemEmissaoPool, c.q.bolagemEmissaoInd, c.q.bolagemEmissaoPool, c.q.bolagemEmissaoInd+c.q.bolagemEmissaoPool, c.a.bolagemEmissaoInd, c.a.bolagemEmissaoPool, c.a.bolagemEmissaoInd+c.a.bolagemEmissaoPool],
+      ['Depósito à Vista', 'Saldo médio',   c.m.dvInd,             c.m.dvPool,             c.m.dvInd+c.m.dvPool,                         c.q.dvInd,             c.q.dvPool,             c.q.dvInd+c.q.dvPool,                         c.a.dvInd,             c.a.dvPool,             c.a.dvInd+c.a.dvPool],
+      ['Investimento', 'Saldo médio',       c.m.invInd,            c.m.invPool,            c.m.invInd+c.m.invPool,                       c.q.invInd,            c.q.invPool,            c.q.invInd+c.q.invPool,                       c.a.invInd,            c.a.invPool,            c.a.invInd+c.a.invPool],
+      ['Pagamentos', 'Boletos',             c.m.boletosInd,        c.m.boletosPool,        c.m.boletosInd+c.m.boletosPool,               c.q.boletosInd,        c.q.boletosPool,        c.q.boletosInd+c.q.boletosPool,               c.a.boletosInd,        c.a.boletosPool,        c.a.boletosInd+c.a.boletosPool],
+      ['Tarifa', 'Preço',                  c.m.tarifaInd,         c.m.tarifaPool,         c.m.tarifaInd+c.m.tarifaPool,                 c.q.tarifaInd,         c.q.tarifaPool,         c.q.tarifaInd+c.q.tarifaPool,                 c.a.tarifaInd,         c.a.tarifaPool,         c.a.tarifaInd+c.a.tarifaPool],
+      ['TOTAL', '',                        c.m.totalInd,          c.m.totalPool,          c.m.total,                                    c.q.totalInd,          c.q.totalPool,          c.q.total,                                    c.a.totalInd,          c.a.totalPool,          c.a.total],
+    ];
+    const csv = rows.map((r, ri) =>
+      r.map((v, ci) => ri === 0 || ci < 2 ? s(v) : s(n(v))).join(';')
+    ).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' }));
-    a.download = 'simulacao-predial.csv';
+    a.download = `ganhos-${nomeAdm || 'simulacao'}.csv`;
     a.click();
   };
 
+  const barAnual = [
+    { name: 'Boletagem\nPreço', ind: c.a.bolagemPrecoInd, pool: c.a.bolagemPrecoPool },
+    { name: 'Boletagem\nEmissão', ind: c.a.bolagemEmissaoInd, pool: c.a.bolagemEmissaoPool },
+    { name: 'Dep. Vista', ind: c.a.dvInd, pool: c.a.dvPool },
+    { name: 'Investimento', ind: c.a.invInd, pool: c.a.invPool },
+    { name: 'Pagamentos', ind: c.a.boletosInd, pool: c.a.boletosPool },
+    { name: 'Tarifa', ind: c.a.tarifaInd, pool: c.a.tarifaPool },
+  ];
+
   return (
     <div className="app-shell">
-      {/* Header */}
       <CHeader className="app-header">
         <CContainer fluid className="header-inner">
           <CHeaderBrand className="brand-mark">
             <span className="brand-symbol"><CIcon icon={cilBank} /></span>
             <span>Sicoob</span>
-            <span className="brand-sub">Auxiliadora Predial</span>
+            <span className="brand-sub">Calculadora de Ganhos</span>
           </CHeaderBrand>
-          <div className="d-flex align-items-center gap-2">
-            <CBadge color="success" shape="rounded-pill" className="env-badge">
-              Simulador
-            </CBadge>
-          </div>
+          <CBadge color="success" shape="rounded-pill" className="env-badge">Cooperativa</CBadge>
         </CContainer>
       </CHeader>
 
       <main className="main-content">
         <CContainer fluid="xl">
 
-          {/* Hero + Parameters */}
+          {/* Título + nome da administradora */}
+          <div className="hero-panel mb-4">
+            <div className="hero-eyebrow">Ferramenta de simulação para administradoras de condomínio</div>
+            <div className="d-flex align-items-center gap-3 flex-wrap">
+              <h1 className="hero-title mb-0">GANHOS</h1>
+              <CFormInput
+                className="hero-name-input"
+                placeholder="Nome da administradora..."
+                value={nomeAdm}
+                onChange={(e) => setNomeAdm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Inputs: Individual + Pool */}
           <CRow className="g-4 mb-4">
-            <CCol lg={8}>
-              <div className="hero-panel">
-                <div className="hero-eyebrow">Modelo baseado na planilha Predial.xlsx</div>
-                <h1 className="hero-title">Simulador de Ganhos<br /><span>Auxiliadora Predial</span></h1>
-                <p className="hero-desc">
-                  Ajuste os parâmetros e acompanhe automaticamente o impacto nos ganhos mensais,
-                  trimestrais e anuais por modalidade Individual e Pool.
-                </p>
-              </div>
+            <CCol md={6}>
+              <InputCard title="Individual" color="#007f5f" value={ind} onChange={setInd} />
             </CCol>
-            <CCol lg={4}>
-              <CCard className="param-card border-0 shadow-sm h-100">
-                <CCardBody className="p-4">
-                  <div className="d-flex align-items-center justify-content-between mb-3">
-                    <div className="fw-bold" style={{ color: '#007f5f' }}>⚙ Parâmetros Dinâmicos</div>
-                    <div className="d-flex align-items-center gap-2">
-                      <CBadge color={STATUS_COLOR[status]} shape="rounded-pill" style={{ fontSize: '0.7rem' }}>
-                        {STATUS_LABEL[status]}
-                      </CBadge>
-                      <CButton color="secondary" variant="outline" size="sm" onClick={reset}
-                        disabled={status === 'loading'}>
-                        <CIcon icon={cilReload} className="me-1" />Restaurar
-                      </CButton>
-                    </div>
-                  </div>
-
-                  <CFormLabel className="small fw-semibold mb-1">Base Faturamento</CFormLabel>
-                  <CInputGroup className="mb-3">
-                    <CInputGroupText>R$</CInputGroupText>
-                    <CFormInput type="number" min="0" step="1000000" value={revenueBase}
-                      disabled={status === 'loading'}
-                      onChange={(e) => set('revenue', Number(e.target.value) || 0)} />
-                  </CInputGroup>
-
-                  <CFormLabel className="small fw-semibold mb-1">Base Pagamentos</CFormLabel>
-                  <CInputGroup className="mb-3">
-                    <CInputGroupText>R$</CInputGroupText>
-                    <CFormInput type="number" min="0" step="1000000" value={paymentsBase}
-                      disabled={status === 'loading'}
-                      onChange={(e) => set('payments', Number(e.target.value) || 0)} />
-                  </CInputGroup>
-
-                  <CFormLabel className="small fw-semibold mb-1">Resultado 2026</CFormLabel>
-                  <CInputGroup>
-                    <CInputGroupText>R$</CInputGroupText>
-                    <CFormInput type="number" min="0" step="1000000" value={result2026}
-                      disabled={status === 'loading'}
-                      onChange={(e) => set('res2026', Number(e.target.value) || 0)} />
-                  </CInputGroup>
-
-                  <div className="mt-3 p-2 rounded" style={{ background: '#f0faf5', fontSize: '0.78rem', color: '#5a7a6e' }}>
-                    <strong>Distribuição 2026 calculada:</strong> {fmt(m.dist2026)}
-                  </div>
-                </CCardBody>
-              </CCard>
+            <CCol md={6}>
+              <InputCard title="Pool" color="#2eb85c" value={pool} onChange={setPool} />
             </CCol>
           </CRow>
 
-          {/* KPI Cards */}
-          <CRow className="g-3 mb-4">
-            <KpiCard icon={cilMoney} label="Ganho Anual Total" value={fmt(m.totals.annualTotal, true)}
-              sub={fmt(m.totals.annualTotal)} color="success" />
-            <KpiCard icon={cilWallet} label="Ganho Mensal" value={fmt(m.totals.monthlyTotal, true)}
-              sub={`Trim: ${fmt(m.totals.quarterlyTotal, true)}`} color="primary" />
-            <KpiCard icon={cilBuilding} label="Condomínios / Unidades"
-              value={`${fmtNum(STATIC.indCondominiums + STATIC.poolCondominiums)} cond.`}
-              sub={`${fmtNum(STATIC.indUnits + STATIC.poolUnits)} unidades`} color="info" />
-            <KpiCard icon={cilGraph} label="Participação Pool"
-              value={`${((m.totals.poolAnnual / m.totals.annualTotal) * 100).toFixed(1)}%`}
-              sub="do ganho anual total" color="warning" />
-          </CRow>
+          {/* Info derivada */}
+          <div className="derived-bar mb-4">
+            <InfoPill label="Resultado 2026 Estimado" value={fmt(c.resultado2026)} />
+            <InfoPill label="Share DV Pool" value={`${(c.shareDV * 100).toFixed(4)}%`} />
+            <InfoPill label="Share Inv Pool" value={`${(c.shareInv * 100).toFixed(4)}%`} />
+            <InfoPill label="Share Cob Pool" value={`${(c.shareCob * 100).toFixed(4)}%`} />
+          </div>
 
-          {/* Navigation Tabs */}
+          {/* Tabs */}
           <CNav variant="tabs" className="mb-0 app-tabs">
             {[
-              { id: 'ganhos', label: 'Ganhos Detalhados', icon: cilCalculator },
-              { id: 'graficos', label: 'Gráficos', icon: cilChart },
-              { id: 'simulacao', label: 'Simulação', icon: cilSettings },
-              { id: 'resultados', label: 'Resultados Predial', icon: cilChartLine },
-            ].map((tab) => (
-              <CNavItem key={tab.id}>
-                <CNavLink active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={tab.icon} className="me-2" />{tab.label}
+              { id: 'resultados', label: 'Resultado',   icon: cilMoney },
+              { id: 'graficos',   label: 'Gráficos',    icon: cilChart },
+              { id: 'parametros', label: 'Parâmetros',  icon: cilSettings },
+            ].map((t) => (
+              <CNavItem key={t.id}>
+                <CNavLink active={activeTab === t.id} onClick={() => setActiveTab(t.id)} style={{ cursor: 'pointer' }}>
+                  <CIcon icon={t.icon} className="me-2" />{t.label}
                 </CNavLink>
               </CNavItem>
             ))}
@@ -456,75 +313,101 @@ export default function App() {
 
           <div className="tab-content-panel">
 
-            {/* ── TAB: Ganhos ── */}
-            {activeTab === 'ganhos' && (
-              <CCard className="border-0 border-top-0 shadow-sm">
-                <CCardBody>
-                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-                    <SectionHeader icon={cilDollar} title="GANHOS AUXILIADORA PREDIAL"
-                      subtitle="Calculado a partir das fórmulas da planilha Predial.xlsx" />
+            {/* ── TAB: Resultado ── */}
+            {activeTab === 'resultados' && (
+              <CCard className="border-0 shadow-sm">
+                <CCardBody className="p-0">
+                  <div className="d-flex align-items-center justify-content-between gap-3 p-4 pb-2">
+                    <div>
+                      <div className="fw-bold fs-5 text-dark">
+                        GANHOS {nomeAdm ? nomeAdm.toUpperCase() : 'ADMINISTRADORA'}
+                      </div>
+                      <div className="text-medium-emphasis small">Valores calculados conforme fórmulas da planilha</div>
+                    </div>
                     <CButton color="secondary" variant="outline" size="sm"
                       className="d-inline-flex align-items-center gap-2" onClick={exportCsv}>
                       <CIcon icon={cilCloudDownload} />Exportar CSV
                     </CButton>
                   </div>
 
-                  <div className="table-responsive">
-                    <CTable hover borderless className="result-table mb-0">
-                      <CTableHead>
-                        <CTableRow className="table-header-row">
-                          <CTableHeaderCell rowSpan={2} className="align-middle">Categoria</CTableHeaderCell>
-                          <CTableHeaderCell rowSpan={2} className="align-middle">Métrica</CTableHeaderCell>
-                          <CTableHeaderCell colSpan={3} className="text-center period-header">Mensal</CTableHeaderCell>
-                          <CTableHeaderCell colSpan={3} className="text-center period-header">Trimestral</CTableHeaderCell>
-                          <CTableHeaderCell colSpan={3} className="text-center period-header annual-header">Anual</CTableHeaderCell>
-                        </CTableRow>
-                        <CTableRow className="table-subheader-row">
-                          {['Individual', 'Pool', 'Total', 'Individual', 'Pool', 'Total', 'Individual', 'Pool', 'Total'].map((h, i) => (
-                            <CTableHeaderCell key={i} className={`text-end ${i >= 6 ? 'annual-col' : ''}`}>{h}</CTableHeaderCell>
-                          ))}
-                        </CTableRow>
-                      </CTableHead>
-                      <CTableBody>
-                        {(() => {
-                          const groups = [...new Set(m.rows.map((r) => r.group))];
-                          return groups.flatMap((group) => {
-                            const groupRows = m.rows.filter((r) => r.group === group);
-                            return groupRows.map((row, idx) => (
-                              <CTableRow key={`${row.group}-${row.metric}`} className="data-row">
-                                {idx === 0 && (
-                                  <CTableDataCell rowSpan={groupRows.length} className="group-cell align-middle">
-                                    <CBadge className="group-badge">{row.group}</CBadge>
-                                  </CTableDataCell>
-                                )}
-                                <CTableDataCell className="metric-cell">{row.metric}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell">{fmt(row.indMonthly)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell">{fmt(row.poolMonthly)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell fw-semibold">{fmt(row.monthlyTotal)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell">{fmt(row.indQuarterly)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell">{fmt(row.poolQuarterly)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell fw-semibold">{fmt(row.quarterlyTotal)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell annual-col">{fmt(row.indAnnual)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell annual-col">{fmt(row.poolAnnual)}</CTableDataCell>
-                                <CTableDataCell className="text-end num-cell annual-col fw-bold text-success">{fmt(row.annualTotal)}</CTableDataCell>
-                              </CTableRow>
-                            ));
-                          });
-                        })()}
-                        <CTableRow className="total-row">
-                          <CTableDataCell colSpan={2} className="fw-bold">TOTAL</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold">{fmt(m.totals.indMonthly)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold">{fmt(m.totals.poolMonthly)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold total-highlight">{fmt(m.totals.monthlyTotal)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold">{fmt(m.totals.indQuarterly)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold">{fmt(m.totals.poolQuarterly)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold total-highlight">{fmt(m.totals.quarterlyTotal)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold annual-col">{fmt(m.totals.indAnnual)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold annual-col">{fmt(m.totals.poolAnnual)}</CTableDataCell>
-                          <CTableDataCell className="text-end fw-bold annual-col total-highlight-green">{fmt(m.totals.annualTotal)}</CTableDataCell>
-                        </CTableRow>
-                      </CTableBody>
-                    </CTable>
+                  <div className="table-responsive px-2 pb-4">
+                    <table className="ganhos-table">
+                      <thead>
+                        <tr>
+                          <th rowSpan={2} className="item-header">Item</th>
+                          <th colSpan={3} className="period-header">Mensal</th>
+                          <th colSpan={3} className="period-header">Trimestral</th>
+                          <th colSpan={3} className="period-header annual-header">Anual</th>
+                        </tr>
+                        <tr>
+                          <th className="sub-header">Individual</th>
+                          <th className="sub-header">Pool</th>
+                          <th className="sub-header total-sub">Total</th>
+                          <th className="sub-header">Individual</th>
+                          <th className="sub-header">Pool</th>
+                          <th className="sub-header total-sub">Total</th>
+                          <th className="sub-header annual-col">Individual</th>
+                          <th className="sub-header annual-col">Pool</th>
+                          <th className="sub-header total-sub annual-col">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="category-row"><td colSpan={10}>Boletagem</td></tr>
+                        <ResultRow
+                          label="Preço atribuído"
+                          hint={`(R$${PRECO_BOLETAGEM} − custo) × unidades`}
+                          mInd={c.m.bolagemPrecoInd}   mPool={c.m.bolagemPrecoPool}
+                          qInd={c.q.bolagemPrecoInd}   qPool={c.q.bolagemPrecoPool}
+                          aInd={c.a.bolagemPrecoInd}   aPool={c.a.bolagemPrecoPool}
+                        />
+                        <ResultRow
+                          label="Emissão (Distrib. resultado)"
+                          hint="Pool · 20% do resultado · share cobrança"
+                          mInd={c.m.bolagemEmissaoInd}   mPool={c.m.bolagemEmissaoPool}
+                          qInd={c.q.bolagemEmissaoInd}   qPool={c.q.bolagemEmissaoPool}
+                          aInd={c.a.bolagemEmissaoInd}   aPool={c.a.bolagemEmissaoPool}
+                        />
+                        <tr className="category-row"><td colSpan={10}>Depósito à vista</td></tr>
+                        <ResultRow
+                          label="Saldo médio (Distrib. resultado)"
+                          hint="Pool · 40% do resultado · share DV (9,13% fat.)"
+                          mInd={c.m.dvInd}   mPool={c.m.dvPool}
+                          qInd={c.q.dvInd}   qPool={c.q.dvPool}
+                          aInd={c.a.dvInd}   aPool={c.a.dvPool}
+                        />
+                        <tr className="category-row"><td colSpan={10}>Investimento</td></tr>
+                        <ResultRow
+                          label="Saldo médio (Distrib. resultado)"
+                          hint="Pool · 25% do resultado · share Inv (9,6% fat.)"
+                          mInd={c.m.invInd}   mPool={c.m.invPool}
+                          qInd={c.q.invInd}   qPool={c.q.invPool}
+                          aInd={c.a.invInd}   aPool={c.a.invPool}
+                        />
+                        <tr className="category-row"><td colSpan={10}>Pagamentos</td></tr>
+                        <ResultRow
+                          label="Boletos"
+                          hint={`Pool fixo: ${fmtN(BOLETOS_FIXO)} × 20%`}
+                          mInd={c.m.boletosInd}   mPool={c.m.boletosPool}
+                          qInd={c.q.boletosInd}   qPool={c.q.boletosPool}
+                          aInd={c.a.boletosInd}   aPool={c.a.boletosPool}
+                        />
+                        <tr className="category-row"><td colSpan={10}>Tarifa</td></tr>
+                        <ResultRow
+                          label="Preço"
+                          hint={`(R$${PRECO_TARIFA} − tarifa atual) × condomínios`}
+                          mInd={c.m.tarifaInd}   mPool={c.m.tarifaPool}
+                          qInd={c.q.tarifaInd}   qPool={c.q.tarifaPool}
+                          aInd={c.a.tarifaInd}   aPool={c.a.tarifaPool}
+                        />
+                        <ResultRow
+                          label="TOTAL"
+                          mInd={c.m.totalInd}   mPool={c.m.totalPool}
+                          qInd={c.q.totalInd}   qPool={c.q.totalPool}
+                          aInd={c.a.totalInd}   aPool={c.a.totalPool}
+                          isTotal
+                        />
+                      </tbody>
+                    </table>
                   </div>
                 </CCardBody>
               </CCard>
@@ -532,269 +415,195 @@ export default function App() {
 
             {/* ── TAB: Gráficos ── */}
             {activeTab === 'graficos' && (
-              <div>
-                <CRow className="g-4 mb-4">
-                  {/* Bar Chart */}
-                  <CCol xl={8}>
-                    <CCard className="border-0 shadow-sm h-100">
-                      <CCardBody>
-                        <SectionHeader icon={cilChart} title="Ganho Anual por Categoria"
-                          subtitle="Individual vs Pool — valores anuais" />
-                        <ResponsiveContainer width="100%" height={320}>
-                          <BarChart data={barData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                            <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6c757d' }} />
-                            <YAxis tickFormatter={(v) => fmt(v, true)} tick={{ fontSize: 11, fill: '#6c757d' }} />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Legend />
-                            <Bar dataKey="Individual" fill={COLORS.individual} radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="Pool" fill={COLORS.pool} radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </CCardBody>
-                    </CCard>
-                  </CCol>
-
-                  {/* Pie Chart */}
-                  <CCol xl={4}>
-                    <CCard className="border-0 shadow-sm h-100">
-                      <CCardBody>
-                        <SectionHeader icon={cilChartLine} title="Composição Anual"
-                          subtitle="Participação por categoria" />
-                        <ResponsiveContainer width="100%" height={320}>
-                          <PieChart>
-                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={110}
-                              dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                              labelLine={false} fontSize={11}>
-                              {pieData.map((entry, index) => (
-                                <Cell key={entry.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip formatter={(v) => fmt(v)} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </CCardBody>
-                    </CCard>
-                  </CCol>
-                </CRow>
-
-                <CRow className="g-4">
-                  {/* Period Area Chart */}
-                  <CCol xl={6}>
-                    <CCard className="border-0 shadow-sm h-100">
-                      <CCardBody>
-                        <SectionHeader icon={cilArrowThickFromBottom} title="Evolução por Período"
-                          subtitle="Mensal → Trimestral → Anual" />
-                        <ResponsiveContainer width="100%" height={280}>
-                          <AreaChart data={periodData} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                            <defs>
-                              <linearGradient id="gradInd" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={COLORS.individual} stopOpacity={0.3} />
-                                <stop offset="95%" stopColor={COLORS.individual} stopOpacity={0} />
-                              </linearGradient>
-                              <linearGradient id="gradPool" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={COLORS.pool} stopOpacity={0.3} />
-                                <stop offset="95%" stopColor={COLORS.pool} stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                            <XAxis dataKey="period" tick={{ fontSize: 12, fill: '#6c757d' }} />
-                            <YAxis tickFormatter={(v) => fmt(v, true)} tick={{ fontSize: 11, fill: '#6c757d' }} />
-                            <Tooltip content={<CustomTooltip />} />
-                            <Legend />
-                            <Area type="monotone" dataKey="Individual" stroke={COLORS.individual}
-                              fill="url(#gradInd)" strokeWidth={2} />
-                            <Area type="monotone" dataKey="Pool" stroke={COLORS.pool}
-                              fill="url(#gradPool)" strokeWidth={2} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </CCardBody>
-                    </CCard>
-                  </CCol>
-
-                  {/* Ind vs Pool donut-style bar */}
-                  <CCol xl={6}>
-                    <CCard className="border-0 shadow-sm h-100">
-                      <CCardBody>
-                        <SectionHeader icon={cilGraph} title="Individual vs Pool — Total Anual"
-                          subtitle="Distribuição entre modalidades" />
-                        <div className="ind-pool-summary mt-2">
-                          {[
-                            { label: 'Pool', value: m.totals.poolAnnual, color: COLORS.pool },
-                            { label: 'Individual', value: m.totals.indAnnual, color: COLORS.individual },
-                          ].map((item) => {
-                            const pct = (item.value / m.totals.annualTotal) * 100;
-                            return (
-                              <div key={item.label} className="mb-4">
-                                <div className="d-flex justify-content-between mb-1">
-                                  <span className="fw-semibold" style={{ color: item.color }}>{item.label}</span>
-                                  <span className="fw-bold">{fmt(item.value)}</span>
-                                </div>
-                                <div className="progress-track">
-                                  <div className="progress-fill" style={{ width: `${pct}%`, background: item.color }} />
-                                </div>
-                                <div className="text-end mt-1" style={{ fontSize: '0.8rem', color: '#6c757d' }}>
-                                  {pct.toFixed(1)}% do total
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="total-summary-box mt-2">
-                          <span>Total Anual</span>
-                          <strong className="text-success fs-5">{fmt(m.totals.annualTotal)}</strong>
-                        </div>
-                      </CCardBody>
-                    </CCard>
-                  </CCol>
-                </CRow>
-              </div>
-            )}
-
-            {/* ── TAB: Simulação ── */}
-            {activeTab === 'simulacao' && (
               <CCard className="border-0 shadow-sm">
                 <CCardBody>
-                  <SectionHeader icon={cilSettings} title="Parâmetros da Simulação"
-                    subtitle="Equivalente à aba Simulação da planilha" />
-                  <CRow className="g-4 mt-1">
+                  <div className="fw-bold fs-6 mb-1">Ganhos Anuais por Categoria</div>
+                  <div className="text-medium-emphasis small mb-4">Individual vs Pool</div>
+                  <ResponsiveContainer width="100%" height={340}>
+                    <BarChart data={barAnual} margin={{ top: 10, right: 20, left: 20, bottom: 40 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" />
+                      <YAxis tickFormatter={(v) => fmtC(v)} tick={{ fontSize: 11 }} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend verticalAlign="top" />
+                      <Bar dataKey="ind" name="Individual" fill="#007f5f" radius={[4,4,0,0]} />
+                      <Bar dataKey="pool" name="Pool" fill="#2eb85c" radius={[4,4,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+
+                  <CRow className="g-3 mt-2">
                     {[
-                      { label: 'Individual', color: '#007f5f', items: [
-                        { k: 'Condomínios', v: fmtNum(STATIC.indCondominiums) },
-                        { k: 'Unidades', v: fmtNum(STATIC.indUnits) },
-                        { k: 'Custo Boletagem', v: fmt(STATIC.costBoletagem) },
-                        { k: 'Faturamento', v: fmt(m.faturamentoInd) },
-                        { k: 'Pagamentos', v: fmt(m.pagamentosInd) },
-                        { k: 'Tarifa (Sicoob)', v: fmt(STATIC.tariffInd) },
-                      ]},
-                      { label: 'Pool', color: '#2eb85c', items: [
-                        { k: 'Condomínios', v: fmtNum(STATIC.poolCondominiums) },
-                        { k: 'Unidades', v: fmtNum(STATIC.poolUnits) },
-                        { k: 'Custo Boletagem', v: fmt(STATIC.costBoletagem) },
-                        { k: 'Faturamento', v: fmt(m.faturamentoPool) },
-                        { k: 'Pagamentos', v: fmt(m.pagamentosPool) },
-                        { k: 'Tarifa (Sicoob)', v: fmt(STATIC.tariffPool || 0) },
-                      ]},
-                    ].map((section) => (
-                      <CCol md={6} key={section.label}>
-                        <div className="sim-card" style={{ borderTopColor: section.color }}>
-                          <div className="sim-header" style={{ color: section.color }}>{section.label}</div>
-                          <table className="sim-table">
-                            <tbody>
-                              {section.items.map((item) => (
-                                <tr key={item.k}>
-                                  <td className="sim-key">{item.k}</td>
-                                  <td className="sim-val">{item.v}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                      { label: 'Total Individual Anual', value: c.a.totalInd, color: '#007f5f' },
+                      { label: 'Total Pool Anual',       value: c.a.totalPool, color: '#2eb85c' },
+                      { label: 'TOTAL GERAL Anual',      value: c.a.total,     color: '#1a1a2e' },
+                    ].map((item) => (
+                      <CCol md={4} key={item.label}>
+                        <div className="summary-pill" style={{ borderColor: item.color }}>
+                          <div className="summary-pill-label">{item.label}</div>
+                          <div className="summary-pill-value" style={{ color: item.color }}>{fmt(item.value)}</div>
                         </div>
                       </CCol>
                     ))}
                   </CRow>
 
-                  <div className="mt-4">
-                    <div className="fw-bold mb-3" style={{ color: '#1b2a33' }}>Premissas das taxas</div>
-                    <CRow className="g-3">
-                      {[
-                        { label: 'Preço Boletagem Atribuído', value: fmt(STATIC.priceBoletagem) + '/boleto' },
-                        { label: 'Taxa Depósito à Vista', value: `${(STATIC.depositRate * 100).toFixed(2)}% do faturamento` },
-                        { label: 'Taxa Investimento', value: `${(STATIC.investmentRate * 100).toFixed(2)}% do faturamento` },
-                        { label: 'Tarifa Atribuída (Ind.)', value: fmt(STATIC.tariffPrice) + '/condomínio' },
-                        { label: 'Rateio Depósito', value: `${(STATIC.depositRateio * 100).toFixed(0)}%` },
-                        { label: 'Rateio Investimento', value: `${(STATIC.investmentRateio * 100).toFixed(0)}%` },
-                        { label: 'Rateio Cobrança', value: `${(STATIC.collectionRateio * 100).toFixed(0)}%` },
-                        { label: 'Boletos Pagamentos (Ind.)', value: `${fmtNum(STATIC.paymentTickets)} × ${(STATIC.paymentSpread * 100).toFixed(0)}%` },
-                      ].map((item) => (
-                        <CCol sm={6} lg={3} key={item.label}>
-                          <div className="rate-card">
-                            <div className="rate-label">{item.label}</div>
-                            <div className="rate-value">{item.value}</div>
+                  {/* Gráfico de rosca */}
+                  {(() => {
+                    const donutData = [
+                      { name: 'Boletagem Preço',   value: c.a.bolagemPrecoInd + c.a.bolagemPrecoPool, color: '#007f5f' },
+                      { name: 'Boletagem Emissão', value: c.a.bolagemEmissaoPool,                     color: '#00b8a9' },
+                      { name: 'Depósito à Vista',  value: c.a.dvPool,                                 color: '#2eb85c' },
+                      { name: 'Investimento',      value: c.a.invPool,                                color: '#f9a825' },
+                      { name: 'Pagamentos',        value: c.a.boletosPool,                            color: '#e67e22' },
+                      { name: 'Tarifa',            value: c.a.tarifaInd + c.a.tarifaPool,            color: '#8e44ad' },
+                    ].filter((d) => d.value > 0);
+                    if (donutData.length === 0) return null;
+                    return (
+                      <div className="mt-4">
+                        <div className="fw-bold fs-6 mb-1">Composição dos Ganhos Anuais</div>
+                        <div className="text-medium-emphasis small mb-3">Participação de cada fonte no total</div>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={donutData}
+                              cx="50%" cy="50%"
+                              innerRadius={75} outerRadius={120}
+                              dataKey="value"
+                              label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                              labelLine={false}
+                              fontSize={12}
+                            >
+                              {donutData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                            </Pie>
+                            <Tooltip formatter={(v) => fmt(v)} />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Barras de progresso por categoria */}
+                  <div className="fw-bold fs-6 mt-4 mb-3">Participação por Categoria (Anual)</div>
+                  {(() => {
+                    const cats = [
+                      { label: 'Boletagem — Preço atribuído', value: c.a.bolagemPrecoInd + c.a.bolagemPrecoPool, color: '#007f5f' },
+                      { label: 'Boletagem — Emissão',         value: c.a.bolagemEmissaoPool,                     color: '#00b8a9' },
+                      { label: 'Depósito à Vista',            value: c.a.dvPool,                                 color: '#2eb85c' },
+                      { label: 'Investimento',                value: c.a.invPool,                                color: '#f9a825' },
+                      { label: 'Pagamentos — Boletos',        value: c.a.boletosPool,                            color: '#e67e22' },
+                      { label: 'Tarifa',                      value: c.a.tarifaInd + c.a.tarifaPool,            color: '#8e44ad' },
+                    ].filter((d) => d.value > 0);
+                    const total = cats.reduce((s, d) => s + d.value, 0);
+                    if (total === 0) return <div className="empty-chart">Preencha os dados para ver o gráfico</div>;
+                    return cats.map((item) => {
+                      const pct = (item.value / total) * 100;
+                      return (
+                        <div key={item.label} className="mb-3">
+                          <div className="d-flex justify-content-between mb-1">
+                            <span className="fw-semibold" style={{ color: item.color }}>{item.label}</span>
+                            <span className="fw-bold">{fmt(item.value)}</span>
                           </div>
-                        </CCol>
-                      ))}
-                    </CRow>
-                  </div>
+                          <div className="progress-track">
+                            <div className="progress-fill" style={{ width: `${pct}%`, background: item.color }} />
+                          </div>
+                          <div className="text-end mt-1" style={{ fontSize: '0.78rem', color: '#6c757d' }}>{pct.toFixed(1)}% do total</div>
+                        </div>
+                      );
+                    });
+                  })()}
+
                 </CCardBody>
               </CCard>
             )}
 
-            {/* ── TAB: Resultados Predial ── */}
-            {activeTab === 'resultados' && (
+            {/* ── TAB: Parâmetros ── */}
+            {activeTab === 'parametros' && (
               <CCard className="border-0 shadow-sm">
                 <CCardBody>
-                  <SectionHeader icon={cilChartLine} title="Resultados Auxiliadora Predial"
-                    subtitle="Equivalente à aba Resultados da planilha" />
+                  <div className="d-flex align-items-center justify-content-between mb-4">
+                    <div>
+                      <div className="fw-bold fs-6">Parâmetros do Sistema</div>
+                      <div className="text-medium-emphasis small">Salvos no banco de dados — afetam todos os cálculos</div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <CBadge color={STATUS_COLOR[status]} shape="rounded-pill">{STATUS_LABEL[status]}</CBadge>
+                      <CButton color="secondary" variant="outline" size="sm" onClick={reset}>
+                        <CIcon icon={cilReload} className="me-1" />Restaurar padrões
+                      </CButton>
+                    </div>
+                  </div>
 
-                  {/* Historical Distribution */}
-                  <div className="fw-bold mb-3 mt-2" style={{ color: '#1b2a33' }}>Histórico de Distribuição</div>
-                  <CTable hover responsive borderless className="result-table mb-4">
-                    <CTableHead>
-                      <CTableRow className="table-header-row">
-                        <CTableHeaderCell>Ano</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">Distribuição</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">Resultado</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">% Distribuição</CTableHeaderCell>
-                      </CTableRow>
-                    </CTableHead>
-                    <CTableBody>
-                      {[
-                        { year: 2024, dist: STATIC.dist2024, result: STATIC.result2024 },
-                        { year: 2025, dist: STATIC.dist2025, result: STATIC.result2025 },
-                        { year: 2026, dist: m.dist2026, result: m.res2026, highlight: true },
-                      ].map((row) => (
-                        <CTableRow key={row.year} className={row.highlight ? 'highlight-row' : ''}>
-                          <CTableDataCell className="fw-semibold">{row.year}{row.highlight && <CBadge color="success" className="ms-2">Projetado</CBadge>}</CTableDataCell>
-                          <CTableDataCell className="text-end">{fmt(row.dist)}</CTableDataCell>
-                          <CTableDataCell className="text-end">{fmt(row.result)}</CTableDataCell>
-                          <CTableDataCell className="text-end">{fmtPct(row.dist / row.result)}</CTableDataCell>
-                        </CTableRow>
-                      ))}
-                    </CTableBody>
-                  </CTable>
-
-                  {/* Predial Income by Account */}
-                  <div className="fw-bold mb-3" style={{ color: '#1b2a33' }}>Ganho Predial por Conta</div>
-                  <CTable hover responsive borderless className="result-table mb-4">
-                    <CTableHead>
-                      <CTableRow className="table-header-row">
-                        <CTableHeaderCell>Conta</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">Rateio</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">Saldo da Conta</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">Ganho Predial</CTableHeaderCell>
-                        <CTableHeaderCell className="text-end">% Predial</CTableHeaderCell>
-                      </CTableRow>
-                    </CTableHead>
-                    <CTableBody>
-                      {m.resultados.map((row) => (
-                        <CTableRow key={row.conta} className="data-row">
-                          <CTableDataCell className="fw-semibold">{row.conta}</CTableDataCell>
-                          <CTableDataCell className="text-end">{fmtPct(row.rateio)}</CTableDataCell>
-                          <CTableDataCell className="text-end">{fmt(row.valor)}</CTableDataCell>
-                          <CTableDataCell className="text-end text-success fw-bold">{fmt(row.predial)}</CTableDataCell>
-                          <CTableDataCell className="text-end">{fmtPct(row.pct)}</CTableDataCell>
-                        </CTableRow>
-                      ))}
-                      <CTableRow className="total-row">
-                        <CTableDataCell colSpan={3} className="fw-bold">TOTAL PREDIAL ANUAL</CTableDataCell>
-                        <CTableDataCell className="text-end fw-bold total-highlight-green">{fmt(m.totalPredialAnual)}</CTableDataCell>
-                        <CTableDataCell />
-                      </CTableRow>
-                    </CTableBody>
-                  </CTable>
-
-                  {/* Summary Cards */}
-                  <CRow className="g-3">
-                    {m.resultados.map((row, i) => (
-                      <CCol md={4} key={row.conta}>
-                        <div className="predial-summary-card" style={{ borderTopColor: PIE_COLORS[i] }}>
-                          <div className="predial-label">{row.conta}</div>
-                          <div className="predial-value" style={{ color: PIE_COLORS[i] }}>{fmt(row.predial)}</div>
-                          <div className="predial-pct">{fmtPct(row.pct)} da conta</div>
+                  <CRow className="g-4">
+                    <CCol md={6}>
+                      <div className="sim-card" style={{ borderTopColor: '#007f5f' }}>
+                        <div className="sim-header" style={{ color: '#007f5f' }}>Resultado 2026 Alvo (C4)</div>
+                        <p className="text-medium-emphasis small mb-3">
+                          Meta de resultado da cooperativa para 2026. O resultado estimado de distribuição é calculado proporcionalmente ao histórico de 2024–2025.
+                        </p>
+                        <CInputGroup>
+                          <CInputGroupText>R$</CInputGroupText>
+                          <CFormInput type="number" min="0" step="100000"
+                            disabled={status === 'loading'}
+                            value={resultado2026alvo || ''}
+                            onChange={(e) => setRes(Number(e.target.value) || 0)} />
+                        </CInputGroup>
+                        <div className="mt-2 p-2 rounded" style={{ background: '#f0faf5', fontSize: '0.8rem', color: '#5a7a6e' }}>
+                          Distribuição estimada 2026: <strong>{fmt(c.resultado2026)}</strong>
                         </div>
-                      </CCol>
-                    ))}
+                      </div>
+                    </CCol>
+
+                    <CCol md={6}>
+                      <div className="sim-card" style={{ borderTopColor: '#2eb85c' }}>
+                        <div className="sim-header" style={{ color: '#2eb85c' }}>Faturamento Base (23M)</div>
+                        <p className="text-medium-emphasis small mb-3">
+                          Base de cálculo para derivar o faturamento de cada perfil proporcionalmente às unidades.
+                          Fórmula: base ÷ 3 ÷ total_unidades × unidades_perfil
+                        </p>
+                        <CInputGroup>
+                          <CInputGroupText>R$</CInputGroupText>
+                          <CFormInput type="number" min="0" step="1000000"
+                            disabled={status === 'loading'}
+                            value={faturamentoBase || ''}
+                            onChange={(e) => setFat(Number(e.target.value) || 0)} />
+                        </CInputGroup>
+                        <div className="mt-2 p-2 rounded" style={{ background: '#f0faf5', fontSize: '0.8rem', color: '#5a7a6e' }}>
+                          Fat. Individual: <strong>{fmt(c.fatInd)}</strong> &nbsp;|&nbsp;
+                          Fat. Pool: <strong>{fmt(c.fatPool)}</strong>
+                        </div>
+                      </div>
+                    </CCol>
+
+                    <CCol xs={12}>
+                      <div className="sim-card" style={{ borderTopColor: '#6c757d' }}>
+                        <div className="sim-header" style={{ color: '#6c757d' }}>Dados Históricos (fixos)</div>
+                        <table className="w-100" style={{ fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: '#f8f9fa' }}>
+                              <th style={{ padding: '8px 12px', textAlign: 'left' }}>Ano</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Distribuição</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Resultado</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>% Distribuído</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { ano: 2024, dist: HIST.dist2024, res: HIST.res2024 },
+                              { ano: 2025, dist: HIST.dist2025, res: HIST.res2025 },
+                            ].map((r) => (
+                              <tr key={r.ano} style={{ borderTop: '1px solid #f0f0f0' }}>
+                                <td style={{ padding: '8px 12px' }}>{r.ano}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#2eb85c', fontWeight: 600 }}>{fmt(r.dist)}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmt(r.res)}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6c757d' }}>
+                                  {((r.dist / r.res) * 100).toFixed(2)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CCol>
                   </CRow>
                 </CCardBody>
               </CCard>
@@ -805,9 +614,9 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <CContainer fluid="xl">
-          <span>Sicoob Auxiliadora Predial — Simulador Predial </span>
-          <span className="ms-auto">Base Faturamento: <strong>{fmt(revenueBase)}</strong></span>
+        <CContainer fluid="xl" className="d-flex flex-wrap align-items-center gap-3">
+          <span>Sicoob — Calculadora de Ganhos para Administradoras</span>
+          <span className="ms-auto">Resultado 2026 alvo: <strong>{fmt(resultado2026alvo)}</strong></span>
         </CContainer>
       </footer>
     </div>

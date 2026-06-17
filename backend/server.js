@@ -6,28 +6,26 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function init() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS params (
-      id   INTEGER PRIMARY KEY DEFAULT 1,
-      revenue_base  NUMERIC,
-      payments_base NUMERIC,
-      result_2026   NUMERIC,
+    CREATE TABLE IF NOT EXISTS config (
+      id               INTEGER PRIMARY KEY DEFAULT 1,
+      resultado_2026   NUMERIC DEFAULT 15500000,
+      faturamento_base NUMERIC DEFAULT 23000000,
       CHECK (id = 1)
     )
   `);
+  await pool.query(`ALTER TABLE config ADD COLUMN IF NOT EXISTS faturamento_base NUMERIC DEFAULT 23000000`).catch(() => {});
 }
 
 app.get('/health', (_, res) => res.json({ ok: true }));
 
 app.get('/api/params', async (_, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM params WHERE id = 1');
-    if (rows.length === 0) return res.json({ revenue_base: 0, payments_base: 0, result_2026: 0 });
+    const { rows } = await pool.query('SELECT * FROM config WHERE id = 1');
+    if (rows.length === 0) return res.json({ resultado_2026: 15500000, faturamento_base: 23000000 });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -35,16 +33,15 @@ app.get('/api/params', async (_, res) => {
 });
 
 app.put('/api/params', async (req, res) => {
-  const { revenue_base, payments_base, result_2026 } = req.body;
+  const { resultado_2026, faturamento_base } = req.body;
   try {
     await pool.query(`
-      INSERT INTO params (id, revenue_base, payments_base, result_2026)
-      VALUES (1, $1, $2, $3)
+      INSERT INTO config (id, resultado_2026, faturamento_base)
+      VALUES (1, $1, $2)
       ON CONFLICT (id) DO UPDATE
-        SET revenue_base  = EXCLUDED.revenue_base,
-            payments_base = EXCLUDED.payments_base,
-            result_2026   = EXCLUDED.result_2026
-    `, [revenue_base ?? 0, payments_base ?? 0, result_2026 ?? 0]);
+        SET resultado_2026   = EXCLUDED.resultado_2026,
+            faturamento_base = EXCLUDED.faturamento_base
+    `, [resultado_2026 ?? 15500000, faturamento_base ?? 23000000]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Read(//c/Users/Kaio/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/cd7b9367-60b7-47c1-93be-46bb112e69fb/7c280392-ba3c-4554-97f6-04f0538e9548/skills/xlsx/**)",
-      "Bash(python scripts/extract-text \"D:\\\\Downloads\\\\Predial.xlsx\")"
+      "Bash(python scripts/extract-text \"D:\\\\Downloads\\\\Predial.xlsx\")",
+      "Bash(python -c ' *)",
+      "Bash(docker compose *)"
     ]
   }
 }
