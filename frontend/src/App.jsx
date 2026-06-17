@@ -254,7 +254,7 @@ export default function App() {
         <CContainer fluid className="header-inner">
           <CHeaderBrand className="brand-mark">
             <span className="brand-symbol"><CIcon icon={cilBank} /></span>
-            <span>Sicoob</span>
+            <span>Sicoob Imob.vc</span>
             <span className="brand-sub">Calculadora de Ganhos</span>
           </CHeaderBrand>
           <CBadge color="success" shape="rounded-pill" className="env-badge">Cooperativa</CBadge>
@@ -281,10 +281,10 @@ export default function App() {
           {/* Inputs: Individual + Pool */}
           <CRow className="g-4 mb-4">
             <CCol md={6}>
-              <InputCard title="Individual" color="#007f5f" value={ind} onChange={setInd} />
+              <InputCard title="Individual" color="#00AE9D" value={ind} onChange={setInd} />
             </CCol>
             <CCol md={6}>
-              <InputCard title="Pool" color="#2eb85c" value={pool} onChange={setPool} />
+              <InputCard title="Pool" color="#7DB61C" value={pool} onChange={setPool} />
             </CCol>
           </CRow>
 
@@ -426,16 +426,16 @@ export default function App() {
                       <YAxis tickFormatter={(v) => fmtC(v)} tick={{ fontSize: 11 }} />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend verticalAlign="top" />
-                      <Bar dataKey="ind" name="Individual" fill="#007f5f" radius={[4,4,0,0]} />
-                      <Bar dataKey="pool" name="Pool" fill="#2eb85c" radius={[4,4,0,0]} />
+                      <Bar dataKey="ind" name="Individual" fill="#00AE9D" radius={[4,4,0,0]} />
+                      <Bar dataKey="pool" name="Pool" fill="#7DB61C" radius={[4,4,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
 
                   <CRow className="g-3 mt-2">
                     {[
-                      { label: 'Total Individual Anual', value: c.a.totalInd, color: '#007f5f' },
-                      { label: 'Total Pool Anual',       value: c.a.totalPool, color: '#2eb85c' },
-                      { label: 'TOTAL GERAL Anual',      value: c.a.total,     color: '#1a1a2e' },
+                      { label: 'Total Individual Anual', value: c.a.totalInd, color: '#00AE9D' },
+                      { label: 'Total Pool Anual',       value: c.a.totalPool, color: '#7DB61C' },
+                      { label: 'TOTAL GERAL Anual',      value: c.a.total,     color: '#003641' },
                     ].map((item) => (
                       <CCol md={4} key={item.label}>
                         <div className="summary-pill" style={{ borderColor: item.color }}>
@@ -449,12 +449,12 @@ export default function App() {
                   {/* Gráfico de rosca */}
                   {(() => {
                     const donutData = [
-                      { name: 'Boletagem Preço',   value: c.a.bolagemPrecoInd + c.a.bolagemPrecoPool, color: '#007f5f' },
-                      { name: 'Boletagem Emissão', value: c.a.bolagemEmissaoPool,                     color: '#00b8a9' },
-                      { name: 'Depósito à Vista',  value: c.a.dvPool,                                 color: '#2eb85c' },
-                      { name: 'Investimento',      value: c.a.invPool,                                color: '#f9a825' },
-                      { name: 'Pagamentos',        value: c.a.boletosPool,                            color: '#e67e22' },
-                      { name: 'Tarifa',            value: c.a.tarifaInd + c.a.tarifaPool,            color: '#8e44ad' },
+                      { name: 'Boletagem Preço',   value: c.a.bolagemPrecoInd + c.a.bolagemPrecoPool, color: '#00AE9D' },
+                      { name: 'Boletagem Emissão', value: c.a.bolagemEmissaoPool,                     color: '#00AE9D' },
+                      { name: 'Depósito à Vista',  value: c.a.dvPool,                                 color: '#7DB61C' },
+                      { name: 'Investimento',      value: c.a.invPool,                                color: '#C9D200' },
+                      { name: 'Pagamentos',        value: c.a.boletosPool,                            color: '#49479D' },
+                      { name: 'Tarifa',            value: c.a.tarifaInd + c.a.tarifaPool,            color: '#003641' },
                     ].filter((d) => d.value > 0);
                     if (donutData.length === 0) return null;
                     return (
@@ -486,12 +486,12 @@ export default function App() {
                   <div className="fw-bold fs-6 mt-4 mb-3">Participação por Categoria (Anual)</div>
                   {(() => {
                     const cats = [
-                      { label: 'Boletagem — Preço atribuído', value: c.a.bolagemPrecoInd + c.a.bolagemPrecoPool, color: '#007f5f' },
-                      { label: 'Boletagem — Emissão',         value: c.a.bolagemEmissaoPool,                     color: '#00b8a9' },
-                      { label: 'Depósito à Vista',            value: c.a.dvPool,                                 color: '#2eb85c' },
-                      { label: 'Investimento',                value: c.a.invPool,                                color: '#f9a825' },
-                      { label: 'Pagamentos — Boletos',        value: c.a.boletosPool,                            color: '#e67e22' },
-                      { label: 'Tarifa',                      value: c.a.tarifaInd + c.a.tarifaPool,            color: '#8e44ad' },
+                      { label: 'Boletagem — Preço atribuído', value: c.a.bolagemPrecoInd + c.a.bolagemPrecoPool, color: '#00AE9D' },
+                      { label: 'Boletagem — Emissão',         value: c.a.bolagemEmissaoPool,                     color: '#00AE9D' },
+                      { label: 'Depósito à Vista',            value: c.a.dvPool,                                 color: '#7DB61C' },
+                      { label: 'Investimento',                value: c.a.invPool,                                color: '#C9D200' },
+                      { label: 'Pagamentos — Boletos',        value: c.a.boletosPool,                            color: '#49479D' },
+                      { label: 'Tarifa',                      value: c.a.tarifaInd + c.a.tarifaPool,            color: '#003641' },
                     ].filter((d) => d.value > 0);
                     const total = cats.reduce((s, d) => s + d.value, 0);
                     if (total === 0) return <div className="empty-chart">Preencha os dados para ver o gráfico</div>;
@@ -535,8 +535,8 @@ export default function App() {
 
                   <CRow className="g-4">
                     <CCol md={6}>
-                      <div className="sim-card" style={{ borderTopColor: '#007f5f' }}>
-                        <div className="sim-header" style={{ color: '#007f5f' }}>Resultado 2026 Alvo (C4)</div>
+                      <div className="sim-card" style={{ borderTopColor: '#00AE9D' }}>
+                        <div className="sim-header" style={{ color: '#00AE9D' }}>Resultado 2026 Alvo (C4)</div>
                         <p className="text-medium-emphasis small mb-3">
                           Meta de resultado da cooperativa para 2026. O resultado estimado de distribuição é calculado proporcionalmente ao histórico de 2024–2025.
                         </p>
@@ -554,8 +554,8 @@ export default function App() {
                     </CCol>
 
                     <CCol md={6}>
-                      <div className="sim-card" style={{ borderTopColor: '#2eb85c' }}>
-                        <div className="sim-header" style={{ color: '#2eb85c' }}>Faturamento Base (23M)</div>
+                      <div className="sim-card" style={{ borderTopColor: '#7DB61C' }}>
+                        <div className="sim-header" style={{ color: '#7DB61C' }}>Faturamento Base (23M)</div>
                         <p className="text-medium-emphasis small mb-3">
                           Base de cálculo para derivar o faturamento de cada perfil proporcionalmente às unidades.
                           Fórmula: base ÷ 3 ÷ total_unidades × unidades_perfil
@@ -593,7 +593,7 @@ export default function App() {
                             ].map((r) => (
                               <tr key={r.ano} style={{ borderTop: '1px solid #f0f0f0' }}>
                                 <td style={{ padding: '8px 12px' }}>{r.ano}</td>
-                                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#2eb85c', fontWeight: 600 }}>{fmt(r.dist)}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', color: '#7DB61C', fontWeight: 600 }}>{fmt(r.dist)}</td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right' }}>{fmt(r.res)}</td>
                                 <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6c757d' }}>
                                   {((r.dist / r.res) * 100).toFixed(2)}%
@@ -615,7 +615,7 @@ export default function App() {
 
       <footer className="app-footer">
         <CContainer fluid="xl" className="d-flex flex-wrap align-items-center gap-3">
-          <span>Sicoob — Calculadora de Ganhos para Administradoras</span>
+          <span>Sicoob Imob.vc — Calculadora de Ganhos para Administradoras</span>
           <span className="ms-auto">Resultado 2026 alvo: <strong>{fmt(resultado2026alvo)}</strong></span>
         </CContainer>
       </footer>
