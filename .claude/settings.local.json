@@ -4,7 +4,22 @@
       "Read(//c/Users/Kaio/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/cd7b9367-60b7-47c1-93be-46bb112e69fb/7c280392-ba3c-4554-97f6-04f0538e9548/skills/xlsx/**)",
       "Bash(python scripts/extract-text \"D:\\\\Downloads\\\\Predial.xlsx\")",
       "Bash(python -c ' *)",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "Bash(cd /d \"D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\")",
+      "Bash(dir /s /b)",
+      "Bash(ls -la \"D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\")",
+      "Bash(ls -la \"D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\\\\WPJ_back\\\\App\\\\Models\\\\Vehicle\\\\\")",
+      "Bash(ls -la \"D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\\\\WPJ_back\\\\Migrations\\\\\" | head -20)",
+      "Bash(ls -la \"D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\\\\WPJ_back\\\\App\\\\Models\\\\\")",
+      "Bash(rm \"D:/Documentos/Desenvolvimento/WPJ/WPJ_back/Migrations/20260618000000_AddVehicleMaintenanceTables.cs\")",
+      "Bash(Sort-Object Name)",
+      "Bash(Select-Object -Last 6)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "PowerShell(cd D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\\\\WPJ_back; dotnet build --no-restore 2>&1 | Where-Object { $_ -match \"error|Error|CS\\\\d\" } | Select-Object -First 20)",
+      "PowerShell(cd D:\\\\Documentos\\\\Desenvolvimento\\\\WPJ\\\\WPJ_back; dotnet build --no-restore 2>&1 | Where-Object { $_ -match \" error CS\" } | Select-Object -First 10)",
+      "Bash(dotnet build *)",
+      "Bash(npx eslint *)",
+      "Bash(npm list *)"
     ]
   }
 }
